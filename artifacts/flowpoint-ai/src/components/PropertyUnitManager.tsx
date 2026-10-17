@@ -225,7 +225,7 @@ function UnitForm({
           source: 'existing' as const,
           contact_id: String(allocation.contact_id),
           entity_type: contact?.contact_type === 'company' ? 'company' as const : 'individual' as const,
-          name: contact?.name ?? relationship?.contact_id ?? '',
+          name: contact?.name ?? String(relationship?.contact_id ?? ''),
           email: contact?.email ?? '',
           phone: contact?.phone ?? '',
           ownership_percentage: allocation.ownership_percentage == null ? '' : String(allocation.ownership_percentage),

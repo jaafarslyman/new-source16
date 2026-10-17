@@ -4,6 +4,63 @@ export interface PropertyUnitOwnerAllocation {
   ownership_percentage: number | null;
 }
 
+export function validateUnitOwnershipMap(
+  allocations: PropertyUnitOwnerAllocation[] | null | undefined,
+  unitCount: number,
+  validOwnerIds: Iterable<string>,
+) {
+  if (!Number.isInteger(unitCount) || unitCount < 1) {
+    return 'Enter a valid unit count before mapping ownership.';
+  }
+
+  const owners = new Set(Array.from(validOwnerIds, String));
+  if (owners.size === 0) return 'Add at least one property owner before mapping units.';
+
+  const mappedAllocations = allocations ?? [];
+  for (const allocation of mappedAllocations) {
+    const number = Number(allocation.unit_number);
+    if (!Number.isInteger(number) || number < 1 || number > unitCount) {
+      return `Ownership assignments must use unit numbers from 1 to ${unitCount}.`;
+    }
+    if (!owners.has(String(allocation.contact_id))) {
+      return 'Every unit assignment must reference a current property owner.';
+    }
+  }
+
+  for (let number = 1; number <= unitCount; number += 1) {
+    const unitAllocations = mappedAllocations.filter(
+      (allocation) => Number(allocation.unit_number) === number,
+    );
+    if (unitAllocations.length === 0) {
+      return `Assign at least one owner to unit ${number}.`;
+    }
+
+    const distinctOwners = new Set(unitAllocations.map((allocation) => String(allocation.contact_id)));
+    if (distinctOwners.size !== unitAllocations.length) {
+      return `Each owner can only be assigned once to unit ${number}.`;
+    }
+
+    if (unitAllocations.length === 1) {
+      const share = unitAllocations[0].ownership_percentage;
+      if (share !== null && (!Number.isFinite(share) || Math.abs(share - 100) > 0.001)) {
+        return `A sole owner must own all of unit ${number}.`;
+      }
+      continue;
+    }
+
+    const shares = unitAllocations.map((allocation) => allocation.ownership_percentage);
+    if (shares.some((share) => share === null || !Number.isFinite(share) || share <= 0 || share > 100)) {
+      return `Enter a valid share for every owner of unit ${number}.`;
+    }
+    const total = shares.reduce<number>((sum, share) => sum + Number(share), 0);
+    if (Math.abs(total - 100) > 0.001) {
+      return `Ownership shares for unit ${number} must total 100%.`;
+    }
+  }
+
+  return null;
+}
+
 export interface Property {
   id: string;
   company_id: string | null;

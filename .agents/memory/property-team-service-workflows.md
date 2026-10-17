@@ -3,7 +3,7 @@ name: Property, staff, and service workflow rules
 description: User-defined domain rules for keeping property, contact, staff, and service records connected.
 ---
 
-Property ownership is a contact-to-property relationship with an explicit ownership percentage; shares for each property or unit must total 100%. Property setup should reuse or create the owner contact and preserve the same ownership relationship in Contacts.
+Property ownership links to a contact and is preserved in Contacts. Property setup follows identity/type, location, mapping, ownership, then details. For multifamily and apartment buildings, map owners to units instead of collecting property-level percentages; whole-unit assignments need no percentage, while multiple owners sharing one unit must total 100% for that unit. Unit creation inherits the map and locks those owners. For other ownership splits, percentages must total 100%.
 
 Staff fields and assignments depend on role. Executives such as the CEO do not need a managed-property portfolio. Maintenance staff record the work type and trade specialties, rather than being assigned a fixed portfolio. Property assignments are for property-management roles.
 

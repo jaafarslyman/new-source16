@@ -24,6 +24,7 @@ import {
   propertyTypeLabel,
   mixedUseOwnershipScopeValues,
   supportsPropertyRental,
+  validateUnitOwnershipMap,
   type Property,
   type PropertyDraft,
 } from '@/lib/propertiesTypes';
@@ -90,64 +91,6 @@ function renterDraftFor(property: Property | null, contacts: Contact[], relation
 
 function contactFitsOwnerKind(contact: Contact, entityType: 'individual' | 'company') {
   return entityType === 'company' ? contact.contact_type === 'company' : contact.contact_type !== 'company';
-}
-
-function scopeSegments(scope: string) {
-  return scope.split(',').map((part) => {
-    const token = part.trim();
-    const range = token.match(/^(\d+)\s*(?:-|–|—|to)\s*(\d+)$/i);
-    if (range) {
-      const first = Number(range[1]);
-      const second = Number(range[2]);
-      return { start: Math.min(first, second), end: Math.max(first, second) };
-    }
-    return /^\d+$/.test(token) ? { start: Number(token), end: Number(token) } : null;
-  }).filter((segment): segment is { start: number; end: number } => segment !== null);
-}
-
-function scopeIncludesUnit(scope: string | null | undefined, unitNumber: string) {
-  const number = Number(unitNumber.trim());
-  return Boolean(scope)
-    && Number.isInteger(number)
-    && scopeSegments(scope ?? '').some((segment) => number >= segment.start && number <= segment.end);
-}
-
-function validateApartmentOwnerScopes(owners: PropertyOwnerDraft[], propertyUnits: Unit[], unitCount: number) {
-  if (owners.length === 0) return 'An apartment building needs at least one building owner.';
-  if (owners.length === 1) return null;
-  if (!Number.isInteger(unitCount) || unitCount < 1) return 'Enter the total apartment count before assigning building ownership.';
-  const segments = owners.map((owner) => scopeSegments(owner.ownership_scope));
-  if (segments.some((items) => items.length === 0)) return 'Each building owner needs a numeric unit scope.';
-  const allSegments = segments.flat();
-  if (allSegments.some((segment) => segment.start < 1 || segment.end > unitCount)) {
-    return `Owner scopes must use apartment numbers from 1 to ${unitCount}.`;
-  }
-  for (let i = 0; i < segments.length; i += 1) {
-    for (let j = i + 1; j < segments.length; j += 1) {
-      if (segments[i].some((left) => segments[j].some((right) => left.start <= right.end && right.start <= left.end))) {
-        return 'Building owner scopes cannot overlap.';
-      }
-    }
-  }
-  const orderedSegments = allSegments.sort((left, right) => left.start - right.start);
-  let nextExpectedNumber = 1;
-  for (const segment of orderedSegments) {
-    if (segment.start !== nextExpectedNumber) {
-      return 'Assign every apartment number to exactly one building owner.';
-    }
-    nextExpectedNumber = segment.end + 1;
-  }
-  if (nextExpectedNumber !== unitCount + 1) {
-    return 'Assign every apartment number to exactly one building owner.';
-  }
-  for (const unit of propertyUnits) {
-    if (!/^\d+$/.test(unit.unit_number.trim()) || Number(unit.unit_number) < 1 || Number(unit.unit_number) > unitCount) {
-      return `Apartment ${unit.unit_number} must use a number from 1 to ${unitCount} to match building ownership.`;
-    }
-    const matches = owners.filter((owner) => scopeIncludesUnit(owner.ownership_scope, unit.unit_number));
-    if (matches.length !== 1) return `Unit ${unit.unit_number} must match exactly one building owner scope before ownership can be saved.`;
-  }
-  return null;
 }
 
 function validateMixedUseOwnerScopes(ownerDrafts: PropertyOwnerDraft[], components: string[]) {
@@ -380,12 +323,27 @@ export default function PropertiesPage() {
   const saveProperty = async (draft: PropertyDraft, ownerDrafts: PropertyOwnerDraft[], renterDraft: PropertyRenterDraft | null, inlineUnits: UnitSavePayload[]) => {
     const current = formProperty;
     const currentUnits = current ? units.filter((unit) => unit.property_id === current.id) : [];
+    const isMappedUnitProperty = draft.property_type === 'multifamily_units' || draft.property_type === 'apartment_building';
     if (current && current.property_type !== draft.property_type && currentUnits.length > 0) {
       throw new Error('This property has units. Its type cannot be changed until those units are removed.');
     }
-    if (draft.property_type === 'apartment_building') {
-      const scopeError = validateApartmentOwnerScopes(ownerDrafts, currentUnits, Number(draft.units_count));
-      if (scopeError) throw new Error(scopeError);
+    if (isMappedUnitProperty) {
+      const configuredUnitCount = Number(draft.units_count);
+      const recordedUnitCount = currentUnits.length + inlineUnits.length;
+      if (!Number.isInteger(configuredUnitCount) || configuredUnitCount < 1) {
+        throw new Error('Enter a valid unit count before saving this property.');
+      }
+      if (recordedUnitCount > configuredUnitCount) {
+        throw new Error(`This property is configured for ${configuredUnitCount} units, but ${recordedUnitCount} are already recorded.`);
+      }
+      if (recordedUnitCount < configuredUnitCount && !draft.units_under_construction) {
+        throw new Error(`Add all ${configuredUnitCount} units, or select “Other units are still under construction” to save with units missing.`);
+      }
+      const ownerReferences = ownerDrafts.map((owner, index) => owner.source === 'new'
+        ? String(owner.temp_contact_id ?? -(index + 1))
+        : String(owner.contact_id));
+      const mapError = validateUnitOwnershipMap(draft.unit_ownership_map, configuredUnitCount, ownerReferences);
+      if (mapError) throw new Error(mapError);
     }
     if (draft.property_type === 'mixed_use_development') {
       const scopeError = validateMixedUseOwnerScopes(ownerDrafts, draft.mixed_use_components ?? []);
@@ -394,7 +352,6 @@ export default function PropertiesPage() {
     const duplicateOwner = ownerDrafts.filter((owner) => owner.source === 'existing').some((owner, index, list) => list.findIndex((item) => item.contact_id === owner.contact_id) !== index);
     if (duplicateOwner) throw new Error('Each owner can only be added once.');
 
-    const isMappedUnitProperty = draft.property_type === 'multifamily_units' || draft.property_type === 'apartment_building';
     const initialDraft: PropertyDraft = {
       ...draft,
       units_under_construction: !current && isMappedUnitProperty
@@ -600,7 +557,7 @@ export default function PropertiesPage() {
             <p className="text-[12px] text-[#706c64]">A clear home for every place your team looks after.</p>
             <p className="text-[10px] text-[#a19c93]">{properties.length} {properties.length === 1 ? 'property' : 'properties'} in your portfolio</p>
           </div>
-          <div className="mb-5 rounded-[13px] border border-[#e9e6e1] bg-white p-3.5">
+          <div className="rounded-[13px] border border-[#e9e6e1] bg-white p-3.5">
             <div className="flex items-center gap-2">
               <label className="relative min-w-0 flex-1">
                 <Search size={12} className="pointer-events-none absolute left-[10px] top-1/2 -translate-y-1/2 text-[#aaa59d]" />
@@ -611,16 +568,16 @@ export default function PropertiesPage() {
                 <FlowPointSelect testId="select-property-type-filter" value={typeFilter} onChange={setTypeFilter} placeholder="All subtypes" options={PROPERTY_TYPES.map((type) => ({ value: type.value, label: type.label }))} />
                 <FlowPointSelect testId="select-property-status-filter" value={statusFilter} onChange={setStatusFilter} placeholder="All statuses" options={[...PROPERTY_STATUSES]} />
               </PageFilterMenu>
-              <button type="button" onClick={() => void loadProperties()} disabled={loading} aria-label="Refresh properties" data-testid="button-refresh-properties" className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-[8px] border border-[#e5e2dd] bg-[#faf9f7] text-[#78746d] transition-colors hover:bg-[#f0eeea] hover:text-[#34312c] disabled:cursor-not-allowed disabled:opacity-55">
+              <button type="button" onClick={() => void loadProperties()} disabled={loading} aria-label="Refresh properties" data-testid="button-refresh-properties" className="flex h-[30px] w-[30px] items-center justify-center rounded-full border border-[#e5e2dd] bg-[#faf9f7] text-[#89847c] hover:border-[#cfcac2] hover:text-[#151412] disabled:opacity-50">
                 <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
               </button>
             </div>
           </div>
-          {loading && <div data-testid="loading-properties" className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{[1, 2, 3, 4, 5, 6].map((item) => <div key={item} className="h-[150px] animate-pulse rounded-[13px] border border-[#eeeae5] bg-[#f0eeeb]" />)}</div>}
-          {!loading && error && <div data-testid="error-properties" className="flex flex-col items-center justify-center rounded-[14px] border border-[#f0c8c3] bg-[#fff9f8] px-6 py-16 text-center"><AlertCircle size={23} className="text-[#b33d32]" /><p className="mt-3 text-[12px] font-semibold text-[#4d2c28]">Properties could not be loaded</p><p className="mt-1 max-w-[380px] text-[11px] text-[#9d716b]">{error}</p><button type="button" data-testid="button-retry-properties" onClick={() => void loadProperties()} className="mt-4 flex h-8 items-center gap-2 rounded-[8px] border border-[#e6c2bd] px-3 text-[11px] font-medium text-[#8e3a31] hover:bg-[#fff0ee]"><RefreshCw size={11} />Try again</button></div>}
-          {!loading && !error && properties.length === 0 && <div data-testid="empty-properties" className="flex flex-col items-center justify-center rounded-[14px] border border-dashed border-[#d9d5ce] bg-[#fbfaf8] px-6 py-20 text-center"><span className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-[#eef1eb] text-[#657d6b]"><Building2 size={22} strokeWidth={1.5} /></span><p className="mt-4 text-[13px] font-semibold text-[#34312c]">No properties yet</p><p className="mt-1 max-w-[360px] text-[11px] leading-[1.6] text-[#97928a]">Add a property to give your operations team a shared source of truth.</p><button type="button" data-testid="button-empty-add-property" onClick={() => setFormProperty(null)} className="mt-5 flex h-9 items-center gap-2 rounded-[9px] bg-[#55776b] px-3.5 text-[11px] font-semibold text-white hover:bg-[#456357]"><Plus size={13} />Add property</button></div>}
-          {!loading && !error && properties.length > 0 && filtered.length === 0 && <div data-testid="empty-filtered-properties" className="rounded-[14px] border border-[#e9e6e1] bg-white px-6 py-16 text-center"><Filter size={19} className="mx-auto text-[#bbb6ae]" /><p className="mt-3 text-[12px] font-semibold text-[#4a4741]">No matching properties</p><p className="mt-1 text-[11px] text-[#99948b]">Try another search or clear the filters.</p><button type="button" data-testid="button-clear-property-filters" onClick={() => { setSearch(''); setTypeFilter(''); setStatusFilter(''); }} className="mt-4 text-[11px] font-semibold text-[#4a4741] underline underline-offset-2">Clear filters</button></div>}
-          {!loading && !error && filtered.length > 0 && <div data-testid="list-properties" className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3"><AnimatePresence mode="popLayout">{filtered.map((property) => <PropertyCard key={property.id} property={property} units={units} contacts={contacts} relationships={relationships} onOpen={() => setProfileProperty(property)} onUnitSave={saveUnit} onUnitDelete={deleteUnit} />)}</AnimatePresence></div>}
+          {loading && <div data-testid="loading-properties" className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{[1, 2, 3, 4, 5, 6].map((item) => <div key={item} className="h-[150px] animate-pulse rounded-[13px] border border-[#eeeae5] bg-[#f0eeeb]" />)}</div>}
+          {!loading && error && <div data-testid="error-properties" className="mt-5 flex flex-col items-center justify-center rounded-[14px] border border-[#f0c8c3] bg-[#fff9f8] px-6 py-16 text-center"><AlertCircle size={23} className="text-[#b33d32]" /><p className="mt-3 text-[12px] font-semibold text-[#4d2c28]">Properties could not be loaded</p><p className="mt-1 max-w-[380px] text-[11px] text-[#9d716b]">{error}</p><button type="button" data-testid="button-retry-properties" onClick={() => void loadProperties()} className="mt-4 flex h-8 items-center gap-2 rounded-[8px] border border-[#e6c2bd] px-3 text-[11px] font-medium text-[#8e3a31] hover:bg-[#fff0ee]"><RefreshCw size={11} />Try again</button></div>}
+          {!loading && !error && properties.length === 0 && <div data-testid="empty-properties" className="mt-5 flex flex-col items-center justify-center rounded-[14px] border border-dashed border-[#d9d5ce] bg-[#fbfaf8] px-6 py-20 text-center"><span className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-[#eef1eb] text-[#657d6b]"><Building2 size={22} strokeWidth={1.5} /></span><p className="mt-4 text-[13px] font-semibold text-[#34312c]">No properties yet</p><p className="mt-1 max-w-[360px] text-[11px] leading-[1.6] text-[#97928a]">Add a property to give your operations team a shared source of truth.</p><button type="button" data-testid="button-empty-add-property" onClick={() => setFormProperty(null)} className="mt-5 flex h-9 items-center gap-2 rounded-[9px] bg-[#55776b] px-3.5 text-[11px] font-semibold text-white hover:bg-[#456357]"><Plus size={13} />Add property</button></div>}
+          {!loading && !error && properties.length > 0 && filtered.length === 0 && <div data-testid="empty-filtered-properties" className="mt-5 rounded-[14px] border border-[#e9e6e1] bg-white px-6 py-16 text-center"><Filter size={19} className="mx-auto text-[#bbb6ae]" /><p className="mt-3 text-[12px] font-semibold text-[#4a4741]">No matching properties</p><p className="mt-1 text-[11px] text-[#99948b]">Try another search or clear the filters.</p><button type="button" data-testid="button-clear-property-filters" onClick={() => { setSearch(''); setTypeFilter(''); setStatusFilter(''); }} className="mt-4 text-[11px] font-semibold text-[#4a4741] underline underline-offset-2">Clear filters</button></div>}
+          {!loading && !error && filtered.length > 0 && <div data-testid="list-properties" className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3"><AnimatePresence mode="popLayout">{filtered.map((property) => <PropertyCard key={property.id} property={property} units={units} contacts={contacts} relationships={relationships} onOpen={() => setProfileProperty(property)} onUnitSave={saveUnit} onUnitDelete={deleteUnit} />)}</AnimatePresence></div>}
         </div>
       </div>
       <AnimatePresence>{formProperty !== undefined && <PropertySetupForm key={formProperty?.id ?? 'new'} property={formProperty} contacts={contacts} initialOwners={formOwners} initialRenter={formRenter} existingUnits={units} onSave={saveProperty} onClose={() => setFormProperty(undefined)} />}</AnimatePresence>
