@@ -621,6 +621,10 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
     property_id: previewProperty.id,
   })), [pendingUnits, previewProperty.id]);
   const configuredUnits = Number(previewProperty.units_count) || 0;
+  const recordedUnitCount = property
+    ? existingUnits.filter((unit) => unit.property_id === property.id).length
+    : pendingUnits.length;
+  const unitsAreMissing = configuredUnits > 0 && recordedUnitCount < configuredUnits;
   const mixedUsePlannedSpaces = plannedMixedUseSpaceCount(mixedUseFloorPlan, mixedUseComponents);
   const mixedUsePlanReady = isMixedUseFloorPlanComplete(mixedUseFloorPlan, Number(floorCount), mixedUseComponents);
   const inlineUnitLimitReached = mixedUse
@@ -1321,7 +1325,7 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
                         {!inlineLayoutReady && <p className="mt-2 text-[10px] text-[#9a958d]">{mixedUse ? 'Complete the per-floor use counts above first.' : apartment ? 'Enter the total unit count and valid capacity for every floor first.' : 'Enter the total unit count first.'}</p>}
                       </>
                     )}
-                    {unitMappedProperty && <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-[10px] border border-[#e5e2dc] bg-white px-3.5 py-3">
+                    {unitMappedProperty && unitsAreMissing && <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-[10px] border border-[#e5e2dc] bg-white px-3.5 py-3">
                       <input
                         data-testid="checkbox-units-under-construction"
                         type="checkbox"
