@@ -231,18 +231,20 @@ function SectionHeading({ eyebrow, title, description, index }: { eyebrow: strin
 }
 
 function ContactFields({
-  row, index, kind, contacts, entityType, onChange,
+  row, index, kind, contacts, entityType, excludedContactIds = [], onChange,
 }: {
   row: OwnerDraft | PropertyRenterDraft;
   index: number;
   kind: 'owner' | 'renter';
   contacts: Contact[];
   entityType?: OwnerDraft['entity_type'];
+  excludedContactIds?: string[];
   onChange: (patch: Partial<OwnerDraft> | Partial<PropertyRenterDraft>) => void;
 }) {
   const selected = contacts.find((contact) => String(contact.id) === row.contact_id);
   const contactOptions = contacts.filter((contact) => {
     if (kind === 'owner') {
+      if (excludedContactIds.includes(String(contact.id)) && String(contact.id) !== row.contact_id) return false;
       if (entityType === 'company') return contact.contact_type === 'company' || String(contact.id) === row.contact_id;
       return contact.contact_type !== 'company' || String(contact.id) === row.contact_id;
     }
@@ -1179,6 +1181,11 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
                             const selectedContact = contacts.find((contact) => String(contact.id) === owner.contact_id);
                             const ownerName = owner.source === 'new' ? owner.name : selectedContact?.name ?? owner.name;
                             const ownerKey = ownerAssignmentKey(owner, index);
+                            const otherOwnerContactIds = owners.flatMap((otherOwner, otherIndex) =>
+                              otherIndex !== index && otherOwner.source === 'existing' && otherOwner.contact_id
+                                ? [otherOwner.contact_id]
+                                : [],
+                            );
                             return (
                               <article key={owner.id ?? `owner-${index}`} data-testid={`card-property-owner-${index}`} className="rounded-[12px] border border-[#e7e4de] bg-white p-3.5 sm:p-4">
                                 <div className="mb-3 flex items-center justify-between gap-3">
@@ -1199,7 +1206,7 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
                                     return <button key={component.value} type="button" data-testid={`button-owner-${index}-scope-${component.value}`} aria-pressed={checked} onClick={() => toggleOwnerMixedUseScope(index, component.value)} className={`flex min-h-8 items-center gap-2 rounded-[7px] px-2 text-left text-[10px] ${checked ? 'bg-[#edf4ee] text-[#4d6a59]' : 'text-[#69665f] hover:bg-[#f7f6f2]'}`}><span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[4px] border ${checked ? 'border-[#63816e] bg-[#63816e] text-white' : 'border-[#d5d2ca] bg-white'}`}>{checked && <Check size={10} />}</span>{component.label}</button>;
                                   })}</div></Field></div>}
                                 </div>
-                                <div className="mt-3"><ContactFields row={owner} index={index} kind="owner" contacts={contacts} entityType={owner.entity_type} onChange={(patch) => setOwner(index, patch as Partial<OwnerDraft>)} /></div>
+                                <div className="mt-3"><ContactFields row={owner} index={index} kind="owner" contacts={contacts} entityType={owner.entity_type} excludedContactIds={otherOwnerContactIds} onChange={(patch) => setOwner(index, patch as Partial<OwnerDraft>)} /></div>
                                 <FormError message={validation[`owner_${index}`] || validation[`owner_share_${index}`] || validation[`owner_scope_${index}`]} testId={`error-property-owner-${index}`} />
                                 {unitMappedProperty && owners.length > 1 && ownerName && <p className="mt-2 text-[10px] text-[#817d75]">Units assigned: {summarizeOwnerUnits(ownerKey) || 'None yet'}</p>}
                               </article>

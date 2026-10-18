@@ -136,6 +136,7 @@ function ContactEditor({
   kind,
   contacts,
   entityType,
+  excludedContactIds = [],
   onChange,
 }: {
   row: PropertyOwnerDraft | PropertyRenterDraft;
@@ -143,10 +144,12 @@ function ContactEditor({
   kind: 'owner' | 'renter';
   contacts: Contact[];
   entityType?: PropertyOwnerDraft['entity_type'];
+  excludedContactIds?: string[];
   onChange: (patch: Partial<PropertyOwnerDraft> | Partial<PropertyRenterDraft>) => void;
 }) {
   const options = contacts.filter((contact) => {
     if (kind === 'owner') {
+      if (excludedContactIds.includes(String(contact.id)) && String(contact.id) !== row.contact_id) return false;
       return entityType === 'company'
         ? contact.contact_type === 'company' || String(contact.id) === row.contact_id
         : contact.contact_type !== 'company' || String(contact.id) === row.contact_id;
@@ -587,15 +590,22 @@ function UnitForm({
             </div>
           ) : (
             <>
-              <div className="space-y-3">{owners.map((owner, index) => <article key={owner.id ?? index} data-testid={`card-unit-owner-${index}`} className="rounded-[10px] border border-[#e7e4de] bg-white p-3">
+              <div className="space-y-3">{owners.map((owner, index) => {
+                const otherOwnerContactIds = owners.flatMap((otherOwner, otherIndex) =>
+                  otherIndex !== index && otherOwner.source === 'existing' && otherOwner.contact_id
+                    ? [otherOwner.contact_id]
+                    : [],
+                );
+                return <article key={owner.id ?? index} data-testid={`card-unit-owner-${index}`} className="rounded-[10px] border border-[#e7e4de] bg-white p-3">
                 <div className="mb-2 flex items-center justify-between"><p className="text-[11px] font-semibold text-[#45443d]">Owner {index + 1}</p>{owners.length > 1 && <button type="button" data-testid={`button-remove-unit-owner-${index}`} aria-label={`Remove owner ${index + 1}`} onClick={() => setOwners((current) => current.filter((_, i) => i !== index))} className="flex h-6 w-6 items-center justify-center rounded-full text-[#938e85] hover:bg-[#fbefed] hover:text-[#a33e34]"><Trash2 size={12} /></button>}</div>
                 <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[150px_1fr]">
                   <Field label="Owner type" required><FlowPointSelect testId={`select-unit-owner-${index}-type`} value={owner.entity_type} onChange={(value) => changeOwner(index, { entity_type: value as PropertyOwnerDraft['entity_type'], contact_id: '', source: 'existing' })} placeholder="Choose owner type" options={[{ value: 'individual', label: 'Individual' }, { value: 'company', label: 'Company' }]} /></Field>
                   {!mixedUse && <Field label="Share" required><div className="relative"><input data-testid={`input-unit-owner-${index}-percentage`} className={`${inputClass} pr-8`} type="number" min="0.01" max="100" step="0.01" value={owner.ownership_percentage} onChange={(event) => changeOwner(index, { ownership_percentage: event.target.value })} placeholder="e.g. 50" /><span className="absolute right-3 top-3 text-[10px] text-[#929087]">%</span></div></Field>}
                 </div>
-                <ContactEditor row={owner} index={index} kind="owner" contacts={contacts} entityType={owner.entity_type} onChange={(patch) => changeOwner(index, patch as Partial<PropertyOwnerDraft>)} />
+                <ContactEditor row={owner} index={index} kind="owner" contacts={contacts} entityType={owner.entity_type} excludedContactIds={otherOwnerContactIds} onChange={(patch) => changeOwner(index, patch as Partial<PropertyOwnerDraft>)} />
                 <FormError message={errors[`owner_${index}`]} />
-              </article>)}</div>
+              </article>;
+              })}</div>
               <button type="button" data-testid="button-add-unit-owner" onClick={() => setOwners((current) => [...current, blankOwner()])} className="mt-2 flex h-8 items-center gap-1.5 rounded-[8px] border border-dashed border-[#d8d5ce] px-3 text-[10px] font-semibold text-[#6f6b63] hover:bg-[#f3f6f1]"><Plus size={12} />Add another owner</button>
               {mixedUse && <p className="mt-2 text-[10px] text-[#89867e]">Each selected owner is recorded as an owner of the whole space.</p>}
               <FormError message={errors.owners} />
