@@ -54,14 +54,14 @@ export function TagListInput({
         {value.map((tag) => (
           <span
             key={tag}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700"
+            className="inline-flex items-center gap-2 rounded-full border border-[#d8e2d8] bg-[#f0f4ef] px-3 py-1.5 text-sm text-[#526d5b]"
           >
             {tag}
             <button
               type="button"
               aria-label={`Remove ${tag}`}
               onClick={() => onChange(value.filter((item) => item !== tag))}
-              className="font-medium text-slate-500 hover:text-red-600"
+              className="font-medium text-[#82948a] hover:text-[#a33e34]"
             >
               ×
             </button>
@@ -76,14 +76,14 @@ export function TagListInput({
           onKeyDown={handleKeyDown}
           onBlur={commitDraft}
           placeholder={placeholder}
-          className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          className="min-w-0 flex-1 rounded-[9px] border border-[#e4e2de] bg-white px-3 py-2 text-sm text-[#24211e] outline-none transition placeholder:text-[#b3afa8] focus:border-[#587b70] focus:ring-2 focus:ring-[#587b70]/10"
           aria-describedby={`${id}-hint`}
         />
         <button
           type="button"
           onClick={commitDraft}
           disabled={!draft.trim()}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-[9px] border border-[#dcd9d2] px-3 py-2 text-sm font-medium text-[#66635b] hover:bg-[#f3f2ee] disabled:cursor-not-allowed disabled:opacity-45"
         >
           Add
         </button>
@@ -109,8 +109,8 @@ export function TagListInput({
                 }
                 className={`rounded-full border px-3 py-1.5 text-xs transition ${
                   selected
-                    ? 'border-blue-600 bg-blue-50 text-blue-700'
-                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-400'
+                    ? 'border-[#8fa994] bg-[#edf4ee] text-[#4d6a59]'
+                    : 'border-[#e7e4de] bg-[#f8f7f4] text-[#6f6b63] hover:border-[#b9cabe]'
                 }`}
               >
                 {suggestion}

@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  AlertCircle, Building2, Check, Loader2, Plus, Trash2, UserRound, X,
+  AlertCircle, ArrowLeft, Building2, Check, CheckCheck, ChevronRight, Loader2, Plus, Trash2, UserRound, X,
 } from 'lucide-react';
 import FlowPointSelect from '@/components/FlowPointSelect';
 import { UnitSetupModal, type UnitSavePayload } from '@/components/PropertyUnitManager';
@@ -80,6 +80,47 @@ type PropertyCategory = keyof typeof PROPERTY_TYPES_BY_CATEGORY;
 type OwnerDraft = PropertyOwnerDraft;
 type Errors = Record<string, string>;
 type IndustrialArrayField = 'warehouse_goods' | 'distribution_goods' | 'distribution_services' | 'manufactured_products' | 'production_inputs' | 'research_focus' | 'research_inputs';
+
+const PROPERTY_SETUP_STEPS = [
+  { title: 'Identity', caption: 'Name and classify the property' },
+  { title: 'Location', caption: 'Where is it located?' },
+  { title: 'Mapping', caption: 'Define the property layout' },
+  { title: 'Ownership', caption: 'Assign owners and shares' },
+  { title: 'Details', caption: 'Add facilities, units, and occupancy' },
+] as const;
+
+const PROPERTY_MAPPING_ERROR_KEYS = [
+  'room_count',
+  'floor_count',
+  'units_count',
+  'floor_capacities',
+  'office_in_building',
+  'office_floor',
+  'industrial_in_building',
+  'industrial_floor',
+  'commercial_space_type',
+  'mixed_use_components',
+  'mixed_use_floor_plan',
+];
+
+function hasPropertyStepErrors(errors: Errors, step: number) {
+  const keys = Object.keys(errors);
+  if (step === 0) return keys.some((key) => key === 'name' || key === 'subtype');
+  if (step === 1) return keys.some((key) => key === 'address_line1' || key === 'city');
+  if (step === 2) return keys.some((key) => PROPERTY_MAPPING_ERROR_KEYS.includes(key));
+  if (step === 3) return keys.some((key) => key === 'owners' || key === 'unit_ownership_map' || key.startsWith('owner_'));
+
+  const earlierStepKeys = new Set([
+    'name',
+    'subtype',
+    'address_line1',
+    'city',
+    ...PROPERTY_MAPPING_ERROR_KEYS,
+    'owners',
+    'unit_ownership_map',
+  ]);
+  return keys.some((key) => !earlierStepKeys.has(key) && !key.startsWith('owner_'));
+}
 
 const inputClass = 'h-10 w-full rounded-[9px] border border-[#e4e2de] bg-white px-3 text-[13px] text-[#24211e] outline-none transition-colors placeholder:text-[#b3afa8] focus:border-[#587b70] focus:ring-2 focus:ring-[#587b70]/10 disabled:cursor-not-allowed disabled:bg-[#f5f3f0]';
 let nextSyntheticContactId = -1;
@@ -230,6 +271,14 @@ function SectionHeading({ eyebrow, title, description, index }: { eyebrow: strin
   );
 }
 
+function PropertyStepIntro({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
+  return <div className="mb-5">
+    <p className="text-[9px] font-semibold uppercase tracking-[.14em] text-[#82948a]">{eyebrow}</p>
+    <h3 className="mt-1 text-[19px] font-semibold tracking-[-.03em] text-[#282722]">{title}</h3>
+    <p className="mt-1 text-[11px] leading-5 text-[#8d8981]">{description}</p>
+  </div>;
+}
+
 function ContactFields({
   row, index, kind, contacts, entityType, excludedContactIds = [], onChange,
 }: {
@@ -284,6 +333,7 @@ function ContactFields({
 
 export default function PropertySetupForm({ property, contacts, initialOwners, initialRenter, existingUnits, onSave, onClose }: PropertySetupFormProps) {
   const [form, setForm] = useState<PropertyDraft>(() => ({ ...blankProperty }));
+  const [step, setStep] = useState(0);
   const [category, setCategory] = useState<PropertyCategory | ''>('');
   const [roomCount, setRoomCount] = useState('');
   const [floorCount, setFloorCount] = useState('');
@@ -304,7 +354,12 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
   const [unitEditorOpen, setUnitEditorOpen] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
   const ownersSignature = JSON.stringify(initialOwners);
+
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0 });
+  }, [step]);
 
   useEffect(() => {
     const propertyType = normalizedSubtype(property?.property_type);
@@ -929,6 +984,14 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
     return next;
   }, [form, subtype, singleFamily, multifamily, apartment, unitMappedProperty, commercial, industrial, officeBuilding, officeInBuilding, officeFloor, retailCenter, hospitalitySpace, commercialSpaceType, mixedUse, mixedUseComponents, mixedUseFloorPlan, property, existingUnits, propertyCanRent, roomCount, floorCount, floorCapacities, owners, unitOwnerAssignments, rented, renter, pendingUnits, industrialBuildingSubtype, warehouse, distributionCenter, manufacturingPlant, researchFacility, propertyFacilities, customFacilities]);
 
+  const continueStep = () => {
+    if (hasPropertyStepErrors(validation, step)) {
+      setSaveError('');
+      return;
+    }
+    setSaveError('');
+    setStep((current) => Math.min(current + 1, PROPERTY_SETUP_STEPS.length - 1));
+  };
   const canSave = Object.keys(validation).length === 0 && !saving;
   const save = async () => {
     if (!canSave) return;
@@ -1017,37 +1080,65 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
           <button type="button" data-testid="button-close-property-setup" aria-label="Close form" onClick={onClose} disabled={saving} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#e5e2dc] text-[#817d75] transition-colors hover:bg-[#f0eeea] hover:text-[#383630] disabled:opacity-50"><X size={15} /></button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
-          <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-            <div className="sm:col-span-2"><Field label="Property name" required><input autoFocus data-testid="input-property-name" className={inputClass} value={form.name} onChange={(event) => setField('name', event.target.value)} placeholder="e.g. Harbor View Residences" /></Field><FormError message={validation.name} testId="error-property-name" /></div>
-            <div className="sm:col-span-2">
-              <Field label="Property type" required>
-                <FlowPointSelect
-                  testId="select-property-category"
-                  value={category}
-                  onChange={selectCategory}
-                  placeholder="Choose a property type"
-                  options={PROPERTY_CATEGORIES.map((option) => ({ value: option.value, label: option.label }))}
-                />
-              </Field>
-            </div>
-            {category && <div className="sm:col-span-2">
-              <Field label={`${PROPERTY_CATEGORIES.find((option) => option.value === category)?.label ?? 'Property'} subtype`} required>
-                <FlowPointSelect testId="select-property-subtype" value={subtype} onChange={selectSubtype} placeholder="Choose a subtype" options={[...PROPERTY_TYPES_BY_CATEGORY[category]]} />
-              </Field>
-            </div>}
-            <div className="sm:col-span-2"><FormError message={validation.subtype} testId="error-property-subtype" /></div>
-            <div className="sm:col-span-2"><Field label="Address line 1" required><input data-testid="input-property-address-line1" className={inputClass} value={form.address_line1 ?? ''} onChange={(event) => setField('address_line1', event.target.value)} placeholder="Street address" /></Field><FormError message={validation.address_line1} testId="error-property-address-line1" /></div>
-            <div className="sm:col-span-2"><Field label="Address line 2" hint="optional"><input data-testid="input-property-address-line2" className={inputClass} value={form.address_line2 ?? ''} onChange={(event) => setField('address_line2', event.target.value)} placeholder="Suite, floor, or building" /></Field></div>
-            <Field label="City" required><input data-testid="input-property-city" className={inputClass} value={form.city ?? ''} onChange={(event) => setField('city', event.target.value)} placeholder="City" /><FormError message={validation.city} testId="error-property-city" /></Field>
-            <Field label="State / region" hint="optional"><input data-testid="input-property-region" className={inputClass} value={form.state ?? ''} onChange={(event) => setField('state', event.target.value)} placeholder="State or region" /></Field>
-            <Field label="Postal code" hint="optional"><input data-testid="input-property-postal-code" className={inputClass} value={form.postal_code ?? ''} onChange={(event) => setField('postal_code', event.target.value)} placeholder="Postal code" /></Field>
-            <Field label="Country" hint="optional"><input data-testid="input-property-country" className={inputClass} value={form.country ?? ''} onChange={(event) => setField('country', event.target.value)} placeholder="Country" /></Field>
+        <div className="shrink-0 border-b border-[#ebe8e3] bg-[#f7f5f1] px-5 py-4 sm:px-7">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="text-[11px] font-semibold text-[#46423b]">Step {step + 1} <span className="font-normal text-[#969188]">of {PROPERTY_SETUP_STEPS.length}</span></p>
+            <p className="text-right text-[10px] text-[#89847c]">{PROPERTY_SETUP_STEPS[step].caption}</p>
           </div>
+          <div className="grid grid-cols-5 gap-2" role="list" aria-label="Property setup progress">
+            {PROPERTY_SETUP_STEPS.map((item, index) => (
+              <div key={item.title} role="listitem" aria-current={step === index ? 'step' : undefined}>
+                <div className={`h-[3px] rounded-full ${index <= step ? 'bg-[#55776b]' : 'bg-[#dfdcd5]'}`} />
+                <p className={`mt-2 text-[9px] font-semibold uppercase tracking-[.08em] ${index === step ? 'text-[#455f53]' : index < step ? 'text-[#68645c]' : 'text-[#a8a39b]'}`}>{item.title}</p>
+              </div>
+            ))}
+          </div>
+        </div>
 
-          <AnimatePresence initial={false}>
-            {subtype && (
-              <motion.div key={subtype} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: .18 }} data-testid="section-property-details" className="mt-7 border-t border-[#e9e6e0] pt-6">
+        <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div key={step} initial={{ opacity: 0, y: 7 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: .16 }}>
+              {step === 0 && <>
+                <PropertyStepIntro eyebrow="01 · Property identity" title="What property are you setting up?" description="Start with the name and classification used to organize this property." />
+                <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
+                  <div className="sm:col-span-2"><Field label="Property name" required><input autoFocus data-testid="input-property-name" className={inputClass} value={form.name} onChange={(event) => setField('name', event.target.value)} placeholder="e.g. Harbor View Residences" /></Field><FormError message={validation.name} testId="error-property-name" /></div>
+                  <div className="sm:col-span-2">
+                    <Field label="Property type" required>
+                      <FlowPointSelect
+                        testId="select-property-category"
+                        value={category}
+                        onChange={selectCategory}
+                        placeholder="Choose a property type"
+                        options={PROPERTY_CATEGORIES.map((option) => ({ value: option.value, label: option.label }))}
+                      />
+                    </Field>
+                  </div>
+                  {category && <div className="sm:col-span-2">
+                    <Field label={`${PROPERTY_CATEGORIES.find((option) => option.value === category)?.label ?? 'Property'} subtype`} required>
+                      <FlowPointSelect testId="select-property-subtype" value={subtype} onChange={selectSubtype} placeholder="Choose a subtype" options={[...PROPERTY_TYPES_BY_CATEGORY[category]]} />
+                    </Field>
+                  </div>}
+                  <div className="sm:col-span-2"><FormError message={validation.subtype} testId="error-property-subtype" /></div>
+                </div>
+              </>}
+              {step === 1 && <>
+                <PropertyStepIntro eyebrow="02 · Location" title="Where is this property?" description="Add the address your team will use to identify and find the property." />
+                <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
+                  <div className="sm:col-span-2"><Field label="Address line 1" required><input data-testid="input-property-address-line1" className={inputClass} value={form.address_line1 ?? ''} onChange={(event) => setField('address_line1', event.target.value)} placeholder="Street address" /></Field><FormError message={validation.address_line1} testId="error-property-address-line1" /></div>
+                  <div className="sm:col-span-2"><Field label="Address line 2" hint="optional"><input data-testid="input-property-address-line2" className={inputClass} value={form.address_line2 ?? ''} onChange={(event) => setField('address_line2', event.target.value)} placeholder="Suite, floor, or building" /></Field></div>
+                  <Field label="City" required><input data-testid="input-property-city" className={inputClass} value={form.city ?? ''} onChange={(event) => setField('city', event.target.value)} placeholder="City" /><FormError message={validation.city} testId="error-property-city" /></Field>
+                  <Field label="State / region" hint="optional"><input data-testid="input-property-region" className={inputClass} value={form.state ?? ''} onChange={(event) => setField('state', event.target.value)} placeholder="State or region" /></Field>
+                  <Field label="Postal code" hint="optional"><input data-testid="input-property-postal-code" className={inputClass} value={form.postal_code ?? ''} onChange={(event) => setField('postal_code', event.target.value)} placeholder="Postal code" /></Field>
+                  <Field label="Country" hint="optional"><input data-testid="input-property-country" className={inputClass} value={form.country ?? ''} onChange={(event) => setField('country', event.target.value)} placeholder="Country" /></Field>
+                </div>
+              </>}
+              {step === 2 && <PropertyStepIntro eyebrow="03 · Property mapping" title="Map the property" description="Define its physical layout before assigning ownership." />}
+              {step === 3 && <PropertyStepIntro eyebrow="04 · Ownership" title="Who owns this property?" description="Add owners and map them to the property or its units." />}
+              {step === 4 && <PropertyStepIntro eyebrow="05 · Property details" title="Complete the property setup" description="Add facilities, occupancy, and unit records where they apply." />}
+
+              {step >= 2 && subtype && (
+                <AnimatePresence initial={false}>
+                  <motion.div key={`${subtype}-${step}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: .18 }} data-testid="section-property-details" className="border-t border-[#e9e6e0] pt-6">
                 <div className="mb-6 flex items-center gap-2 rounded-[10px] border border-[#e3e8e1] bg-[#f3f6f1] px-3.5 py-2.5 text-[11px] text-[#65786c]">
                   <Check size={13} className="shrink-0" />
                   <span><strong className="font-semibold text-[#485d51]">{PROPERTY_TYPES_BY_CATEGORY[category as PropertyCategory]?.find((option) => option.value === subtype)?.label}</strong> setup · Add operational details that help your team manage this property.</span>
@@ -1055,7 +1146,7 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
 
                 {(residential || commercial || industrial) && (
                   <>
-                    {residential && <section className="mb-7" data-testid="section-property-layout">
+                    {step === 2 && residential && <section className="mb-7" data-testid="section-property-layout">
                       <SectionHeading index="01" eyebrow="Property mapping" title="Map the property" description={unitMappedProperty ? 'Set floor count and total unit capacity before assigning ownership.' : 'Set rooms and floors before assigning ownership.'} />
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         {singleFamily && <><Field label="Rooms" required><input data-testid="input-property-room-count" className={inputClass} type="number" min="1" step="1" value={roomCount} onChange={(event) => setRoomCount(event.target.value)} placeholder="e.g. 5" /></Field><Field label="Floors" required><input data-testid="input-property-floor-count" className={inputClass} type="number" min="1" step="1" value={floorCount} onChange={(event) => { const value = event.target.value; setFloorCount(value); setFloorCapacities(Array.from({ length: Math.min(Number(value) || 0, 100) }, (_, index) => floorCapacities[index] ?? '')); }} placeholder="e.g. 2" /></Field></>}
@@ -1072,7 +1163,7 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
                       </>}
                     </section>}
 
-                    {commercial && <section className="mb-7" data-testid="section-commercial-details">
+                    {step === 2 && commercial && <section className="mb-7" data-testid="section-commercial-details">
                       <SectionHeading index="01" eyebrow="Property mapping" title="Configure this property type" description="Set the type-specific layout before assigning ownership." />
                       {officeBuilding && <div className="space-y-3">
                         <Field label="Is this office inside a building?" required>
@@ -1149,7 +1240,7 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
                       </>}
                     </section>}
 
-                    {industrial && <section className="mb-7" data-testid="section-industrial-details">
+                    {step === 2 && industrial && <section className="mb-7" data-testid="section-industrial-details">
                       <SectionHeading index="01" eyebrow="Property mapping" title="Map this industrial property" description="Capture whether this space is standalone or located inside another building." />
                       {industrialBuildingSubtype && <div className="space-y-3">
                         <Field label="Is this property inside a building?" required>
@@ -1163,9 +1254,10 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
                           <FormError message={validation.industrial_floor} testId="error-industrial-floor" />
                         </Field>}
                       </div>}
+                       {manufacturingPlant && <p className="rounded-[10px] border border-[#e7e4de] bg-white px-3.5 py-3 text-[10px] leading-4 text-[#77736d]">No additional building mapping is required for this property type. Continue to assign ownership.</p>}
                     </section>}
 
-                    {(singleFamily || unitMappedProperty || commercial || industrial || mixedUse) && (
+                    {step === 3 && (singleFamily || unitMappedProperty || commercial || industrial || mixedUse) && (
                       <section className="mb-7" data-testid="section-property-owners">
                         <SectionHeading
                           index="02"
@@ -1261,7 +1353,7 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
                       </section>
                     )}
 
-                    {(singleFamily || multifamily || apartment || commercial || mixedUse || industrial) && (
+                    {step === 4 && (singleFamily || multifamily || apartment || commercial || mixedUse || industrial) && (
                       <section className="mb-7" data-testid="section-property-facilities">
                         <SectionHeading index="03" eyebrow="Property details" title="Facilities & features" description={mixedUse ? 'Optional. Select shared facilities for the uses included in this property, or add a facility that isn’t listed.' : commercial || industrial ? 'Optional. Select facilities available at this property, or add a facility that isn’t listed.' : apartment ? 'Optional. Select building amenities and home-style shared facilities.' : 'Optional. Select what’s available, or add a facility that isn’t listed.'} />
                         <FacilityPicker options={sharedFacilityOptions} value={propertyFacilities} onChange={setFacilities} testId="property-facility-picker" />
@@ -1271,7 +1363,27 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
                       </section>
                     )}
 
-                    {propertyCanRent && (
+                    {step === 4 && industrial && <section className="mb-7" data-testid="section-industrial-operations">
+                      <SectionHeading index="04" eyebrow="Operations" title="What happens at this property?" description="Add the goods, products, or research focus that help your team understand this site." />
+                      {warehouse && <div>
+                        <Field label="Goods stored" required><TagListInput id="input-property-warehouse-goods" value={form.warehouse_goods ?? []} onChange={(value) => updateIndustrialTags('warehouse_goods', value)} placeholder="Type a good and press Enter" suggestions={WAREHOUSE_GOODS} /></Field>
+                        <FormError message={validation.warehouse_goods} testId="error-property-warehouse-goods" />
+                      </div>}
+                      {distributionCenter && <div className="space-y-4">
+                        <div><Field label="Goods handled" required><TagListInput id="input-property-distribution-goods" value={form.distribution_goods ?? []} onChange={(value) => updateIndustrialTags('distribution_goods', value)} placeholder="Type a good and press Enter" suggestions={DISTRIBUTION_GOODS} /></Field><FormError message={validation.distribution_goods} testId="error-property-distribution-goods" /></div>
+                        <Field label="Services provided" hint="optional"><TagListInput id="input-property-distribution-services" value={form.distribution_services ?? []} onChange={(value) => updateIndustrialTags('distribution_services', value)} placeholder="Type a service and press Enter" suggestions={DISTRIBUTION_SERVICES} /></Field>
+                      </div>}
+                      {manufacturingPlant && <div className="space-y-4">
+                        <div><Field label="Products manufactured" required><TagListInput id="input-property-manufactured-products" value={form.manufactured_products ?? []} onChange={(value) => updateIndustrialTags('manufactured_products', value)} placeholder="Type a product and press Enter" suggestions={MANUFACTURED_PRODUCT_SUGGESTIONS} /></Field><FormError message={validation.manufactured_products} testId="error-property-manufactured-products" /></div>
+                        <Field label="Production inputs" hint="optional"><TagListInput id="input-property-production-inputs" value={form.production_inputs ?? []} onChange={(value) => updateIndustrialTags('production_inputs', value)} placeholder="Type an input and press Enter" suggestions={PRODUCTION_INPUT_SUGGESTIONS} /></Field>
+                      </div>}
+                      {researchFacility && <div className="space-y-4">
+                        <div><Field label="Research focus" required><TagListInput id="input-property-research-focus" value={form.research_focus ?? []} onChange={(value) => updateIndustrialTags('research_focus', value)} placeholder="Type a focus and press Enter" suggestions={RESEARCH_FOCUS_SUGGESTIONS} /></Field><FormError message={validation.research_focus} testId="error-property-research-focus" /></div>
+                        <Field label="Research inputs" hint="optional"><TagListInput id="input-property-research-inputs" value={form.research_inputs ?? []} onChange={(value) => updateIndustrialTags('research_inputs', value)} placeholder="Type an input and press Enter" suggestions={RESEARCH_INPUT_SUGGESTIONS} /></Field>
+                      </div>}
+                    </section>}
+
+                    {step === 4 && propertyCanRent && (
                       <section data-testid="section-property-rental">
                         <SectionHeading index="04" eyebrow="Occupancy" title={`Is this ${singleFamily ? 'home' : 'property'} rented?`} description={`Add the current renter and lease details, or leave the ${singleFamily ? 'home' : 'property'} unoccupied.`} />
                         <div className="grid grid-cols-2 gap-2" role="group" aria-label="Rental status">
@@ -1292,7 +1404,7 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
                     )}
                   </>
                 )}
-                {((!property && (multifamily || apartment || mixedUse)) || (Boolean(property) && unitMappedProperty)) && (
+                {step === 4 && ((!property && (multifamily || apartment || mixedUse)) || (Boolean(property) && unitMappedProperty)) && (
                   <section className="mt-7 border-t border-[#e9e6e0] pt-6" data-testid="section-property-inline-units">
                     <SectionHeading
                       index="05"
@@ -1337,16 +1449,23 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
                   </section>
                 )}
                 {!residential && !commercial && !industrial && <div data-testid="text-property-basic-setup" className="rounded-[10px] border border-[#e7e4de] bg-white px-4 py-3 text-[11px] leading-5 text-[#817d75]">The location and property classification are ready. Additional setup for this property type will be available in a later step.</div>}
-              </motion.div>
-            )}
+                  </motion.div>
+                </AnimatePresence>
+              )}
+            </motion.div>
           </AnimatePresence>
 
           {saveError && <div data-testid="error-property-save" role="alert" className="mt-5 flex items-start gap-2 rounded-[9px] border border-[#efd2ce] bg-[#fff7f5] px-3.5 py-3 text-[11px] leading-4 text-[#a33e34]"><AlertCircle size={14} className="mt-0.5 shrink-0" />{saveError}</div>}
         </div>
 
         <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-[#e9e6e0] bg-[#faf9f6] px-5 py-3.5 sm:px-7">
-          <p data-testid="text-property-required-hint" className="text-[10px] text-[#98938a]"><span className="text-[#b24d40]">*</span> Required fields</p>
-          <div className="flex gap-2"><button type="button" data-testid="button-cancel-property-setup" onClick={onClose} disabled={saving} className="h-9 rounded-[9px] border border-[#e2dfd8] px-4 text-[11px] font-semibold text-[#66635c] transition-colors hover:bg-[#f1efeb] disabled:opacity-50">Cancel</button><button type="button" data-testid="button-save-property-setup" onClick={save} disabled={!canSave} title={!canSave && Object.keys(validation).length ? 'Complete the required fields to continue' : undefined} className="flex h-9 min-w-[122px] items-center justify-center gap-2 rounded-[9px] bg-[#55776b] px-4 text-[11px] font-semibold text-white transition-colors hover:bg-[#456357] disabled:cursor-not-allowed disabled:bg-[#b9c4bb]">{saving ? <><Loader2 size={13} className="animate-spin" />Saving…</> : property ? 'Save changes' : 'Create property'}</button></div>
+          <button type="button" data-testid="button-property-step-back" onClick={() => { setSaveError(''); setStep((current) => Math.max(current - 1, 0)); }} disabled={step === 0 || saving} className="flex h-9 items-center gap-2 rounded-[9px] border border-[#e4e2de] px-3 text-[11px] font-semibold text-[#625e57] hover:bg-[#f0eeea] disabled:cursor-not-allowed disabled:opacity-40"><ArrowLeft size={13} />Back</button>
+          <div className="flex items-center gap-2">
+            <button type="button" data-testid="button-cancel-property-setup" onClick={onClose} disabled={saving} className="hidden h-9 rounded-[9px] px-3 text-[11px] font-medium text-[#77736d] hover:bg-[#f0eeea] disabled:opacity-50 sm:block">Cancel</button>
+            {step < PROPERTY_SETUP_STEPS.length - 1
+              ? <button type="button" data-testid="button-property-step-continue" onClick={continueStep} disabled={saving} className="flex h-9 items-center gap-2 rounded-[9px] bg-[#55776b] px-4 text-[11px] font-semibold text-white shadow-[0_2px_5px_rgba(47,67,54,.12)] hover:bg-[#456357] disabled:opacity-50">Continue<ChevronRight size={13} /></button>
+              : <button type="button" data-testid="button-save-property-setup" onClick={save} disabled={!canSave} title={!canSave && Object.keys(validation).length ? 'Complete the required fields to continue' : undefined} className="flex h-9 items-center gap-2 rounded-[9px] bg-[#55776b] px-4 text-[11px] font-semibold text-white shadow-[0_2px_5px_rgba(47,67,54,.12)] hover:bg-[#456357] disabled:cursor-not-allowed disabled:opacity-50">{saving ? <Loader2 size={13} className="animate-spin" /> : <CheckCheck size={13} />}{saving ? 'Saving property' : property ? 'Save changes' : 'Create property'}</button>}
+          </div>
         </footer>
       </motion.section>
       {unitEditorOpen && (multifamily || apartment || mixedUse) && <UnitSetupModal property={previewProperty} units={[...existingUnits.filter((unit) => unit.property_id === previewProperty.id), ...inlineUnitRecords]} contacts={inlineOwnerData.contacts} relationships={inlineOwnerData.relationships} onSave={async (payload) => { setPendingUnits((current) => [...current, { ...payload, draft: { ...payload.draft, property_id: previewProperty.id } }]); setUnitEditorOpen(false); }} onClose={() => setUnitEditorOpen(false)} />}
