@@ -9,8 +9,8 @@ export function validateUnitOwnershipMap(
   unitCount: number,
   validOwnerIds: Iterable<string>,
 ) {
-  if (!Number.isInteger(unitCount) || unitCount < 1) {
-    return 'Enter a valid unit count before mapping ownership.';
+  if (!Number.isInteger(unitCount) || unitCount < 2) {
+    return 'Multifamily and apartment properties must have at least two units.';
   }
 
   const owners = new Set(Array.from(validOwnerIds, String));

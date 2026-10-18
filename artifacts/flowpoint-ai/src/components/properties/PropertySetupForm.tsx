@@ -747,8 +747,8 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
       if (!roomCount.trim() || !Number.isInteger(Number(roomCount)) || Number(roomCount) <= 0) next.room_count = 'Enter a whole-number room count greater than 0.';
       if (!floorCount.trim() || !Number.isInteger(Number(floorCount)) || Number(floorCount) <= 0) next.floor_count = 'Enter a whole-number floor count greater than 0.';
     }
-    if (multifamily && (!form.units_count || !Number.isInteger(Number(form.units_count)) || Number(form.units_count) <= 0)) next.units_count = 'Enter a whole-number unit count greater than 0.';
-    if (unitMappedProperty && Number.isInteger(Number(form.units_count)) && Number(form.units_count) > 0) {
+    if (unitMappedProperty && (!form.units_count || !Number.isInteger(Number(form.units_count)) || Number(form.units_count) < 2)) next.units_count = 'Enter a whole-number unit count of at least 2.';
+    if (unitMappedProperty && Number.isInteger(Number(form.units_count)) && Number(form.units_count) >= 2) {
       const recordedUnits = property
         ? existingUnits.filter((unit) => unit.property_id === property.id).length
         : pendingUnits.length;
@@ -758,7 +758,7 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
         next.inline_units = `Add all ${form.units_count} units, or select “Other units are still under construction” to save with units missing.`;
       }
     }
-    if (unitMappedProperty && owners.length > 1 && Number.isInteger(Number(form.units_count)) && Number(form.units_count) > 0) {
+    if (unitMappedProperty && owners.length > 1 && Number.isInteger(Number(form.units_count)) && Number(form.units_count) >= 2) {
       const ownerKeys = owners.map((owner, index) => ownerAssignmentKey(owner, index));
       for (let number = 1; number <= Number(form.units_count); number += 1) {
         const assignments = unitOwnerAssignments.filter((assignment) =>
@@ -783,7 +783,6 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
     }
     if (apartment) {
       if (!floorCount.trim() || !Number.isInteger(Number(floorCount)) || Number(floorCount) <= 0) next.floor_count = 'Enter a whole-number floor count greater than 0.';
-      if (!form.units_count || !Number.isInteger(Number(form.units_count)) || Number(form.units_count) <= 0) next.units_count = 'Enter a whole-number unit count greater than 0.';
       const expectedFloors = Number(floorCount);
       if (expectedFloors > 0 && floorCapacities.length !== expectedFloors) next.floor_capacities = 'Add capacity for every floor.';
       else if (floorCapacities.length && floorCapacities.some((capacity) => capacity.trim() === '' || !Number.isInteger(Number(capacity)) || Number(capacity) < 0)) next.floor_capacities = 'Use a whole-number capacity of 0 or more for each floor.';
@@ -1060,8 +1059,8 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
                       <SectionHeading index="01" eyebrow="Property mapping" title="Map the property" description={unitMappedProperty ? 'Set floor count and total unit capacity before assigning ownership.' : 'Set rooms and floors before assigning ownership.'} />
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         {singleFamily && <><Field label="Rooms" required><input data-testid="input-property-room-count" className={inputClass} type="number" min="1" step="1" value={roomCount} onChange={(event) => setRoomCount(event.target.value)} placeholder="e.g. 5" /></Field><Field label="Floors" required><input data-testid="input-property-floor-count" className={inputClass} type="number" min="1" step="1" value={floorCount} onChange={(event) => { const value = event.target.value; setFloorCount(value); setFloorCapacities(Array.from({ length: Math.min(Number(value) || 0, 100) }, (_, index) => floorCapacities[index] ?? '')); }} placeholder="e.g. 2" /></Field></>}
-                        {apartment && <><Field label="Floors" required><input data-testid="input-property-floor-count" className={inputClass} type="number" min="1" step="1" value={floorCount} onChange={(event) => { const value = event.target.value; setFloorCount(value); setFloorCapacities(Array.from({ length: Math.min(Number(value) || 0, 100) }, (_, index) => floorCapacities[index] ?? '')); }} placeholder="e.g. 4" /></Field><Field label="Total units" required><input data-testid="input-property-unit-count" className={inputClass} type="number" min="1" step="1" value={form.units_count ?? ''} onChange={(event) => setField('units_count', event.target.value ? Number(event.target.value) : null)} placeholder="e.g. 24" /><FormError message={validation.units_count} testId="error-property-unit-count" /></Field></>}
-                        {multifamily && <div className="sm:col-span-2"><Field label="Number of units" required><input data-testid="input-property-unit-count" className={inputClass} type="number" min="1" step="1" value={form.units_count ?? ''} onChange={(event) => setField('units_count', event.target.value ? Number(event.target.value) : null)} placeholder="e.g. 8" /></Field><FormError message={validation.units_count} testId="error-property-unit-count" /><p className="mt-1.5 text-[10px] text-[#969188]">Add each planned unit in the unit section below. Mark unfinished units there if construction is still in progress.</p></div>}
+                        {apartment && <><Field label="Floors" required><input data-testid="input-property-floor-count" className={inputClass} type="number" min="1" step="1" value={floorCount} onChange={(event) => { const value = event.target.value; setFloorCount(value); setFloorCapacities(Array.from({ length: Math.min(Number(value) || 0, 100) }, (_, index) => floorCapacities[index] ?? '')); }} placeholder="e.g. 4" /></Field><Field label="Total units" required><input data-testid="input-property-unit-count" className={inputClass} type="number" min="2" step="1" value={form.units_count ?? ''} onChange={(event) => setField('units_count', event.target.value ? Number(event.target.value) : null)} placeholder="e.g. 24" /><FormError message={validation.units_count} testId="error-property-unit-count" /></Field></>}
+                        {multifamily && <div className="sm:col-span-2"><Field label="Number of units" required><input data-testid="input-property-unit-count" className={inputClass} type="number" min="2" step="1" value={form.units_count ?? ''} onChange={(event) => setField('units_count', event.target.value ? Number(event.target.value) : null)} placeholder="e.g. 8" /></Field><FormError message={validation.units_count} testId="error-property-unit-count" /><p className="mt-1.5 text-[10px] text-[#969188]">Add each planned unit in the unit section below. Mark unfinished units there if construction is still in progress.</p></div>}
                       </div>
                       {singleFamily && <div className="mt-1 grid grid-cols-1 gap-3 sm:grid-cols-2"><FormError message={validation.room_count} testId="error-property-room-count" /><FormError message={validation.floor_count} testId="error-property-floor-count" /></div>}
                       {apartment && <>

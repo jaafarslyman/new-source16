@@ -330,8 +330,8 @@ export default function PropertiesPage() {
     if (isMappedUnitProperty) {
       const configuredUnitCount = Number(draft.units_count);
       const recordedUnitCount = currentUnits.length + inlineUnits.length;
-      if (!Number.isInteger(configuredUnitCount) || configuredUnitCount < 1) {
-        throw new Error('Enter a valid unit count before saving this property.');
+      if (!Number.isInteger(configuredUnitCount) || configuredUnitCount < 2) {
+        throw new Error('Multifamily and apartment properties must have at least two units.');
       }
       if (recordedUnitCount > configuredUnitCount) {
         throw new Error(`This property is configured for ${configuredUnitCount} units, but ${recordedUnitCount} are already recorded.`);

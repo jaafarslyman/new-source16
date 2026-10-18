@@ -244,8 +244,8 @@ export default function PropertyDetailPage() {
     if (duplicateOwner) throw new Error('Each owner can only be added once.');
     if (isMappedUnitProperty) {
       const configuredUnitCount = Number(draft.units_count);
-      if (!Number.isInteger(configuredUnitCount) || configuredUnitCount < 1) {
-        throw new Error('Enter a valid unit count before saving this property.');
+      if (!Number.isInteger(configuredUnitCount) || configuredUnitCount < 2) {
+        throw new Error('Multifamily and apartment properties must have at least two units.');
       }
       if (propertyUnits.length > configuredUnitCount) {
         throw new Error(`This property is configured for ${configuredUnitCount} units, but ${propertyUnits.length} are already recorded.`);
