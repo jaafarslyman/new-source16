@@ -19,7 +19,10 @@ export default function PageFilterMenu({
   useEffect(() => {
     if (!open) return;
     const handlePointerDown = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      const insideSelectMenu = target instanceof Element && target.closest('[data-flowpoint-select-menu]');
+      if (ref.current?.contains(target) || insideSelectMenu) return;
+      setOpen(false);
     };
     document.addEventListener('mousedown', handlePointerDown);
     return () => document.removeEventListener('mousedown', handlePointerDown);

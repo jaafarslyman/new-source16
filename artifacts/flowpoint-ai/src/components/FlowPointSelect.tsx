@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, ChevronDown } from 'lucide-react';
 
 export interface FlowPointSelectOption {
@@ -28,16 +29,57 @@ export default function FlowPointSelect({
 }: FlowPointSelectProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPosition, setMenuPosition] = useState<React.CSSProperties | null>(null);
   const selected = options.find((option) => option.value === value);
 
   useEffect(() => {
     if (!open) return;
     const handlePointerDown = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
     document.addEventListener('mousedown', handlePointerDown);
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuPosition(null);
+      return;
+    }
+
+    const updatePosition = () => {
+      const anchor = rootRef.current?.getBoundingClientRect();
+      if (!anchor) return;
+
+      const edge = 8;
+      const spaceBelow = window.innerHeight - anchor.bottom - edge;
+      const spaceAbove = anchor.top - edge;
+      const desiredHeight = Math.min(260, Math.max(44, options.length * 42 + 8));
+      const openAbove = spaceBelow < desiredHeight && spaceAbove > spaceBelow;
+      const availableHeight = openAbove ? spaceAbove : spaceBelow;
+      const width = Math.min(anchor.width, window.innerWidth - edge * 2);
+      const left = Math.max(edge, Math.min(anchor.left, window.innerWidth - width - edge));
+
+      setMenuPosition({
+        position: 'fixed',
+        left,
+        width,
+        maxHeight: Math.max(44, Math.min(260, availableHeight - edge)),
+        top: openAbove ? undefined : anchor.bottom + 5,
+        bottom: openAbove ? window.innerHeight - anchor.top + 5 : undefined,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    document.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      document.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open, options.length]);
 
   return (
     <div ref={rootRef} className="relative">
@@ -55,10 +97,13 @@ export default function FlowPointSelect({
         </span>
         <ChevronDown size={14} className={`flex-shrink-0 text-[#8e8981] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
-      {open && (
+      {open && menuPosition && createPortal(
         <div
+          ref={menuRef}
           role="listbox"
-          className="absolute left-0 right-0 top-[calc(100%+5px)] z-[80] max-h-[260px] overflow-y-auto rounded-[10px] border border-[#e4e2de] bg-white p-1 shadow-[0_12px_30px_rgba(25,22,18,.14)]"
+          data-flowpoint-select-menu="true"
+          style={menuPosition}
+          className="z-[100] overflow-y-auto rounded-[10px] border border-[#e4e2de] bg-white p-1 shadow-[0_12px_30px_rgba(25,22,18,.14)]"
         >
           {options.length === 0 ? (
             <p className="px-3 py-2.5 text-[12px] text-[#9b968d]">{emptyLabel}</p>
@@ -83,7 +128,8 @@ export default function FlowPointSelect({
               </button>
             ))
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

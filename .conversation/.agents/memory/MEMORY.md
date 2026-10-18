@@ -1,1 +1,0 @@
-- [Property, staff, and service rules](property-team-service-workflows.md) — keep ownership shares, role-based staff assignments, and company-vs-staff service delivery consistent.

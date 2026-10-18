@@ -1055,7 +1055,7 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         {singleFamily && <><Field label="Rooms" required><input data-testid="input-property-room-count" className={inputClass} type="number" min="1" step="1" value={roomCount} onChange={(event) => setRoomCount(event.target.value)} placeholder="e.g. 5" /></Field><Field label="Floors" required><input data-testid="input-property-floor-count" className={inputClass} type="number" min="1" step="1" value={floorCount} onChange={(event) => { const value = event.target.value; setFloorCount(value); setFloorCapacities(Array.from({ length: Math.min(Number(value) || 0, 100) }, (_, index) => floorCapacities[index] ?? '')); }} placeholder="e.g. 2" /></Field></>}
                         {apartment && <><Field label="Floors" required><input data-testid="input-property-floor-count" className={inputClass} type="number" min="1" step="1" value={floorCount} onChange={(event) => { const value = event.target.value; setFloorCount(value); setFloorCapacities(Array.from({ length: Math.min(Number(value) || 0, 100) }, (_, index) => floorCapacities[index] ?? '')); }} placeholder="e.g. 4" /></Field><Field label="Total units" required><input data-testid="input-property-unit-count" className={inputClass} type="number" min="1" step="1" value={form.units_count ?? ''} onChange={(event) => setField('units_count', event.target.value ? Number(event.target.value) : null)} placeholder="e.g. 24" /><FormError message={validation.units_count} testId="error-property-unit-count" /></Field></>}
-                        {multifamily && <div className="sm:col-span-2"><Field label="Number of units" required><input data-testid="input-property-unit-count" className={inputClass} type="number" min="1" step="1" value={form.units_count ?? ''} onChange={(event) => setField('units_count', event.target.value ? Number(event.target.value) : null)} placeholder="e.g. 8" /></Field><FormError message={validation.units_count} testId="error-property-unit-count" /><p className="mt-1.5 text-[10px] text-[#969188]">Add each planned unit now, or mark the remaining units as under construction below.</p></div>}
+                        {multifamily && <div className="sm:col-span-2"><Field label="Number of units" required><input data-testid="input-property-unit-count" className={inputClass} type="number" min="1" step="1" value={form.units_count ?? ''} onChange={(event) => setField('units_count', event.target.value ? Number(event.target.value) : null)} placeholder="e.g. 8" /></Field><FormError message={validation.units_count} testId="error-property-unit-count" /><p className="mt-1.5 text-[10px] text-[#969188]">Add each planned unit in the unit section below. Mark unfinished units there if construction is still in progress.</p></div>}
                       </div>
                       {singleFamily && <div className="mt-1 grid grid-cols-1 gap-3 sm:grid-cols-2"><FormError message={validation.room_count} testId="error-property-room-count" /><FormError message={validation.floor_count} testId="error-property-floor-count" /></div>}
                       {apartment && <>
@@ -1065,16 +1065,6 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
                           <FormError message={validation.floor_count || validation.floor_capacities} testId="error-property-floor-capacities" />
                         </div>
                       </>}
-                      {unitMappedProperty && <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-[10px] border border-[#e5e2dc] bg-white px-3.5 py-3">
-                        <input
-                          data-testid="checkbox-units-under-construction"
-                          type="checkbox"
-                          checked={Boolean(form.units_under_construction)}
-                          onChange={(event) => setField('units_under_construction', event.target.checked)}
-                          className="mt-0.5 h-4 w-4 accent-[#55776b]"
-                        />
-                        <span><span className="block text-[11px] font-semibold text-[#45443d]">Other units are still under construction</span><span className="mt-1 block text-[10px] leading-4 text-[#8e8981]">Select this only when some of the configured units cannot be added yet. You can complete them later.</span></span>
-                      </label>}
                     </section>}
 
                     {commercial && <section className="mb-7" data-testid="section-commercial-details">
@@ -1292,21 +1282,48 @@ export default function PropertySetupForm({ property, contacts, initialOwners, i
                     )}
                   </>
                 )}
-                {!property && (multifamily || apartment || mixedUse) && (
+                {((!property && (multifamily || apartment || mixedUse)) || (Boolean(property) && unitMappedProperty)) && (
                   <section className="mt-7 border-t border-[#e9e6e0] pt-6" data-testid="section-property-inline-units">
-                      <SectionHeading index="05" eyebrow={mixedUse ? 'Space details' : 'Unit details'} title={mixedUse ? 'Add detailed space records' : 'Add units now'} description={mixedUse ? 'The floor plan above sets the building’s counts. Add individual spaces now, or create them later from the property card.' : 'Set up homes here, or create the property first and add units from its card.'} />
-                      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="text-[12px] font-semibold text-[#37362f]">{mixedUse ? 'Planned spaces' : 'Configured units'}</p>
-                          <p className="mt-1 text-[10px] leading-4 text-[#969188]">{mixedUse ? 'Track each floor-plan space as you add it.' : 'Add every configured unit, or mark the remaining units as under construction.'}</p>
+                    <SectionHeading
+                      index="05"
+                      eyebrow={mixedUse ? 'Space details' : 'Unit details'}
+                      title={property ? 'Unit records' : mixedUse ? 'Add detailed space records' : 'Add units now'}
+                      description={property
+                        ? 'Manage individual units from the property page. Update the construction status here when units are not ready yet.'
+                        : mixedUse
+                          ? 'The floor plan above sets the building’s counts. Add individual spaces now, or create them later from the property card.'
+                          : 'Set up homes here, or create the property first and add units from its card.'}
+                    />
+                    {property ? (
+                      <p className="mb-3 rounded-[10px] border border-[#e7e4de] bg-white px-3 py-3 text-[10px] text-[#77736d]">
+                        {existingUnits.filter((unit) => unit.property_id === property.id).length} of {configuredUnits} configured units are recorded. Add or edit unit records from the property page.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-[12px] font-semibold text-[#37362f]">{mixedUse ? 'Planned spaces' : 'Configured units'}</p>
+                            <p className="mt-1 text-[10px] leading-4 text-[#969188]">{mixedUse ? 'Track each floor-plan space as you add it.' : 'Add every configured unit, or mark the remaining units as under construction.'}</p>
+                          </div>
+                          <span data-testid="text-inline-unit-count" className="rounded-full bg-[#f0f2ec] px-2.5 py-1 text-[10px] font-semibold text-[#617565]">{mixedUse ? `${inlineUnitRecords.length} / ${mixedUsePlannedSpaces} planned spaces` : `${inlineUnitRecords.length} / ${configuredUnits || '—'} units`}</span>
                         </div>
-                       <span data-testid="text-inline-unit-count" className="rounded-full bg-[#f0f2ec] px-2.5 py-1 text-[10px] font-semibold text-[#617565]">{mixedUse ? `${inlineUnitRecords.length} / ${mixedUsePlannedSpaces} planned spaces` : `${inlineUnitRecords.length} / ${configuredUnits || '—'} units`}</span>
-                    </div>
-                     {!inlineLayoutReady && <p className="mb-3 rounded-[9px] bg-[#f6f5f1] px-3 py-2 text-[10px] text-[#8d8981]">{mixedUse ? 'Select at least one use, set the floor count, and enter a count for each use on every floor above.' : apartment ? 'Set the total units and floor capacities above before adding apartment records.' : 'Set the total number of units above before adding homes.'}</p>}
-                    {inlineUnitRecords.length > 0 ? <div className="mb-3 space-y-2">{inlineUnitRecords.map((unit, index) => <article key={`${unit.unit_number}-${index}`} data-testid={`card-inline-unit-${index}`} className="flex items-center justify-between gap-3 rounded-[10px] border border-[#e7e4de] bg-white px-3 py-2.5"><div className="min-w-0"><p className="truncate text-[11px] font-semibold text-[#45433c]">{unit.unit_number}</p><p className="mt-0.5 text-[10px] text-[#969188]">{mixedUse ? `${unitTypeLabel(unit.unit_type)} · ${unit.floor === 0 ? 'Ground floor' : `Floor ${unit.floor}`}` : apartment ? unit.floor === 0 ? 'Ground floor' : `Floor ${unit.floor}` : `${unit.floor_count} interior floor${unit.floor_count === 1 ? '' : 's'}`} {!mixedUse && `· ${unit.room_count} rooms`}</p></div><button type="button" data-testid={`button-remove-inline-unit-${index}`} onClick={() => setPendingUnits((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remove unit ${unit.unit_number}`} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#938e85] hover:bg-[#fbefed] hover:text-[#a33e34]"><Trash2 size={13} /></button></article>)}</div> : <p className="mb-3 rounded-[10px] border border-dashed border-[#d8d5ce] px-3 py-4 text-center text-[10px] text-[#9a958d]">No units added yet.</p>}
-                    <FormError message={validation.inline_units || validation.inline_floor_capacity || validation.inline_floor} />
-                     <button type="button" data-testid="button-add-inline-unit" disabled={!inlineLayoutReady || inlineUnitLimitReached} onClick={() => setUnitEditorOpen(true)} className="flex h-9 items-center gap-2 rounded-[9px] border border-dashed border-[#d8d5ce] px-3 text-[11px] font-semibold text-[#6f6b63] transition-colors hover:border-[#aebcaf] hover:bg-[#f3f6f1] hover:text-[#4f6d58] disabled:cursor-not-allowed disabled:opacity-45"><Plus size={13} />{inlineUnitLimitReached ? mixedUse ? 'Space limit reached' : 'Unit limit reached' : mixedUse ? 'Add a space' : 'Add a unit'}</button>
-                     {!inlineLayoutReady && <p className="mt-2 text-[10px] text-[#9a958d]">{mixedUse ? 'Complete the per-floor use counts above first.' : apartment ? 'Enter the total unit count and valid capacity for every floor first.' : 'Enter the total unit count first.'}</p>}
+                        {!inlineLayoutReady && <p className="mb-3 rounded-[9px] bg-[#f6f5f1] px-3 py-2 text-[10px] text-[#8d8981]">{mixedUse ? 'Select at least one use, set the floor count, and enter a count for each use on every floor above.' : apartment ? 'Set the total units and floor capacities above before adding apartment records.' : 'Set the total number of units above before adding homes.'}</p>}
+                        {inlineUnitRecords.length > 0 ? <div className="mb-3 space-y-2">{inlineUnitRecords.map((unit, index) => <article key={`${unit.unit_number}-${index}`} data-testid={`card-inline-unit-${index}`} className="flex items-center justify-between gap-3 rounded-[10px] border border-[#e7e4de] bg-white px-3 py-2.5"><div className="min-w-0"><p className="truncate text-[11px] font-semibold text-[#45433c]">{unit.unit_number}</p><p className="mt-0.5 text-[10px] text-[#969188]">{mixedUse ? `${unitTypeLabel(unit.unit_type)} · ${unit.floor === 0 ? 'Ground floor' : `Floor ${unit.floor}`}` : apartment ? unit.floor === 0 ? 'Ground floor' : `Floor ${unit.floor}` : `${unit.floor_count} interior floor${unit.floor_count === 1 ? '' : 's'}`} {!mixedUse && `· ${unit.room_count} rooms`}</p></div><button type="button" data-testid={`button-remove-inline-unit-${index}`} onClick={() => setPendingUnits((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remove unit ${unit.unit_number}`} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#938e85] hover:bg-[#fbefed] hover:text-[#a33e34]"><Trash2 size={13} /></button></article>)}</div> : <p className="mb-3 rounded-[10px] border border-dashed border-[#d8d5ce] px-3 py-4 text-center text-[10px] text-[#9a958d]">No units added yet.</p>}
+                        <FormError message={validation.inline_units || validation.inline_floor_capacity || validation.inline_floor} />
+                        <button type="button" data-testid="button-add-inline-unit" disabled={!inlineLayoutReady || inlineUnitLimitReached} onClick={() => setUnitEditorOpen(true)} className="flex h-9 items-center gap-2 rounded-[9px] border border-dashed border-[#d8d5ce] px-3 text-[11px] font-semibold text-[#6f6b63] transition-colors hover:border-[#aebcaf] hover:bg-[#f3f6f1] hover:text-[#4f6d58] disabled:cursor-not-allowed disabled:opacity-45"><Plus size={13} />{inlineUnitLimitReached ? mixedUse ? 'Space limit reached' : 'Unit limit reached' : mixedUse ? 'Add a space' : 'Add a unit'}</button>
+                        {!inlineLayoutReady && <p className="mt-2 text-[10px] text-[#9a958d]">{mixedUse ? 'Complete the per-floor use counts above first.' : apartment ? 'Enter the total unit count and valid capacity for every floor first.' : 'Enter the total unit count first.'}</p>}
+                      </>
+                    )}
+                    {unitMappedProperty && <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-[10px] border border-[#e5e2dc] bg-white px-3.5 py-3">
+                      <input
+                        data-testid="checkbox-units-under-construction"
+                        type="checkbox"
+                        checked={Boolean(form.units_under_construction)}
+                        onChange={(event) => setField('units_under_construction', event.target.checked)}
+                        className="mt-0.5 h-4 w-4 accent-[#55776b]"
+                      />
+                      <span><span className="block text-[11px] font-semibold text-[#45443d]">Other units are still under construction</span><span className="mt-1 block text-[10px] leading-4 text-[#8e8981]">Select this only when some of the configured units cannot be added yet. You can complete them later.</span></span>
+                    </label>}
                   </section>
                 )}
                 {!residential && !commercial && !industrial && <div data-testid="text-property-basic-setup" className="rounded-[10px] border border-[#e7e4de] bg-white px-4 py-3 text-[11px] leading-5 text-[#817d75]">The location and property classification are ready. Additional setup for this property type will be available in a later step.</div>}

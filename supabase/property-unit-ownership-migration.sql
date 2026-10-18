@@ -127,4 +127,6 @@ on public.properties
 for each row
 execute function public.validate_property_units_construction_state();
 
+notify pgrst, 'reload schema';
+
 commit;
